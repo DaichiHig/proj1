@@ -10,20 +10,43 @@
 #define HTML_PORTNUM 80
 struct sockaddr_in serv_addr;
 
+char *get_filename(char *buff){
+	if(*buff == '/'){
+		char *p, *fname;
+		buff++;
+		p = strchr(buff, ' ');
+		if (p==0){//エラー
+			printf("Illegal format\n");
+			exit(1);	
+		}
+		*p = '\0';//Null文字の格納
+		if (p==buff) return "index.html";//アクセスファイルが空欄だったとき
+		fname = malloc(strlen(buff)+ 1);
+		strcpy(fname, buff);//文字列データのコピー
+		return fname;
+	}else{//
+		printf("Unknown header %s\n", buff);
+		exit(1);
+	}
+}
 
 
 
 int main(){
 	int sockfd, new_sockfd;
 	int val;
-	
+	int do_get_filename = 1;
+	int count = 0;
+
 	char buff[1024];
+	char *p;
+	char *req_filename;
 	//char dat[2]; //受取データ抽出用
 	//char buff_re[128];
 	//int dat_int;
 	int flag = 1;
 	
-	FILE *istream;
+	FILE *istream, *file;
 	
 	//ソケットの作成
 	sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -71,8 +94,8 @@ int main(){
 			exit(1);
 		}
 	
-		//クライアントからデータを受け取る
-		istream = fdopen(new_sockfd, "r+");
+		//クライアントからリクエストデータを受け取る
+		istream = fdopen(new_sockfd, "r+");//ソケットをストリームに変換する
 		if(istream == NULL){
 			perror("fdopen:");
 			exit(1);
@@ -82,23 +105,63 @@ int main(){
 			perror("setvbuf:");
 			exit(1);
 		}
-	
-	
-	
 		while(1){
+			
 			if(fgets(buff, 1024, istream) == 0){
 				write(2, "fgets:error", 12);
 				break;
 			}
 			printf("%s", buff);
-		
+			p = strchr(buff, '/');
+			if(do_get_filename==1){
+				req_filename = get_filename(p);
+				do_get_filename = 0;
+				//printf("doreq\n");
+			}
+			//count ++;
 			if(strcmp("\r\n", buff) == 0){
 				break;
 			}
 		}
+		printf("request file:%s\n", req_filename);
+		
 		
 		//レスポンス
-		fprintf(istream, "HTTP/1.1 200 OK\r\ncontent-Type:text/html\r\n\r\nHello\r\n\r\n");
+		//fprintf(istream, "HTTP/1.1 200 OK\r\ncontent-Type:text/html\r\n\r\nHello\r\n\r\n");
+		file = fopen(req_filename, "r");
+		//ヘッダの送信
+		while(1){
+			if(fgets(buff, 1024, file) == 0){
+				printf("fgets:error\n");
+				break;
+			}
+			p = strchr(buff, '\n');
+			if (p!=0) *p = '\0';
+			fprintf(istream, "%s\r\n", buff);
+			
+			if(strcmp("\0", buff) == 0){
+				break;
+			}
+		}
+		//ボディの送信
+		while(1){
+			if(fgets(buff, 1024, file) == 0){
+				printf("fgets:error\n");
+				break;
+			}
+			p = strchr(buff, '\n');
+			if (p!=0) *p = '\0';
+			fprintf(istream, "%s\r\n", buff);
+			
+			if(strcmp("\0", buff) == 0){
+				break;
+			}
+		}
+		val = fclose(file);
+		if(val != 0){
+			perror("fclose(file):");
+			exit(1);
+		}
 		
 		sleep(1);
 		val = fclose(istream);
