@@ -1,4 +1,4 @@
-//cy22226 日暮大地　webget.c 
+//cy22226 日暮大地　websrv.c 余力まで完了 
 #include <arpa/inet.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -36,83 +36,15 @@ char *get_filename(char *buff){
 
 /*
 webページのサーバを起動するプログラム
-同じディレクトリにindex.html,testpage.html,errpage.htmlが必要
+同じディレクトリにindex.html,testpage.html,errpage.html,post.html,form.html,favicon.icoが必要
 クライアントから要求を受け取ってクライアントにファイルデータを送信できる。
 今回ファイルにはページを推移できるようにリンクを載せた。具体的なそれぞれのファイルの仕様は次である。
-index.html　Helloと表示する。　testpage.htmlに飛べるリンクを表示する。
+index.html　Helloと表示する。　testpage.html,form.htmlに飛べるリンクを表示する。
 testpage.html wold!と表示する。　index.htmlに飛べるリンクを表示する。
 errpage.html 404 can't define this file! と表示する。　index.htmlに飛べるリンクを表示する。
-
-テスト：
-URLにファイル名を指定した場合と、していない場合と、間違ったファイル名を指定した場合でテストをした。
-URLは具体的に以下のものを試した
-
-http://127.0.0.1/index.htmlのときの表示////////////////////
-サーバ側
-accept4
-GET /index.html HTTP/1.1
-Host: 127.0.0.1
-User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0
-....コードに影響するので省略
-
-request file:index.html
-
-クライアント側
- Hello
-rink of test page 
-
-http://127.0.0.1/testpage.htmlのときの表示/////////////////////
-サーバ側
-accept4
-GET /testpage.html HTTP/1.1
-Host: 127.0.0.1
-User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0
-....コードに影響するので省略
-
-request file:index.html
-
-クライアント側
-  wold!
-go home page 
-
-http://127.0.0.1/のときの表示////////////////////////
-サーバ側
-accept4
-GET / HTTP/1.1
-Host: 127.0.0.1
-User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0
-....コードに影響するので省略
-
-request file:index.html
-
-クライアント側
- Hello
-rink of test page 
-
-http://127.0.0.1/fのときの表示//////////////////////////
-サーバ側
-accept4
-GET /f HTTP/1.1
-Host: 127.0.0.1
-User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0
-....コードに影響するので省略
-
-request file:f
-fopen:: No such file or directory
-
-クライアント側
-  404
-can't define this file!
-back to home page 
-
-また、それぞれのページのリンクをクリックするとページのファイルの要求が同じように届いて正しく動作した。
-リンクをクリックせずにカーソルでかざすと空のリクエストが来るのがよくわからなかった。空だとうまく動かないので、
-その場合、今回はそのままcontinue文でやり直して、サーバのプログラムが止まるの回避した。その時のターミナルの表示は次である。
-
-accept4
-fgets:non reqest
-不明なリクエストが確認されました
-
+form.html 入力ボックスを表示して、フォームの送信ができる。　　index.htmlに飛べるリンクを表示する。
+post.html OK Your address is 「フォーム入力内容」と表示する。　index.htmlに飛べるリンクを表示する。
+余力完了
 */
 int main(){
 	int sockfd, new_sockfd; //ソケット用ファイルディスクリプタ、sockfdはlisten用ソケット、new_sockfdはデータのやり取り用ソケット
@@ -127,7 +59,7 @@ int main(){
 	char cliadd[1024];
 	
 	int flag = 1; //ソケットのオプションの設定に用いるフラグ
-	int mode, m;
+	int mode, m; //modeは-1のときモード未確定、0のときGET、1のときはPOSTモードを表す。mはcontent-lengthを読み込むためのフラグ
 	
 	int contentlen;
 	
@@ -175,8 +107,8 @@ int main(){
 	//リクエストのファイルが存在しなければ、errpageに飛ばす。
 	while(1){
 		do_get_filename = 1; //要求ファイル名取得を行わせるフラグの初期化
-		mode = -1;
-		m = 1;
+		mode = -1; //モードの初期化
+		m = 1; //content-length取得フラグの初期化
 		//要求の受付
 		new_sockfd = accept(sockfd, NULL, NULL);
 		if(new_sockfd == -1){
@@ -306,7 +238,31 @@ int main(){
 			if (p!=0) *p = '\0';
 			fprintf(istream, "%s\r\n", buff);
 		}
-		if(mode == 1) fprintf(istream, "Your address is %s\r\n", cliadd + 5);
+		
+		if(mode == 1) {//入力情報の表示
+			
+			p = strchr(cliadd, '&');
+			*p = '\0';
+			fprintf(istream, "Your address is %s.\r\n", cliadd + 5);
+			
+			/*その他の情報の送信方法模索中
+			*p = 't';
+			p = strchr(cliadd, '&');
+			*p = '\0';
+			fprintf(istream, "Your name is %s.\r\n", cliadd + 10);
+			/*
+			i = strchr(p, '&');
+			*i = '\0';
+			if(strcmp(p+5, "on")){
+				fprintf(istream, "Your are fine.\r\n");
+			}else{
+				fprintf(istream, "Your are not fine.\r\n");
+			}
+			i = strchr(p, '&');
+			*i = '\0';
+			fprintf(istream, "Your sex is %s.\r\n", p + 5);
+			*/
+		}
 		
 		val = fclose(file);//ページファイルのクローズ
 		if(val != 0){
