@@ -6,15 +6,30 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-#include "con_sock-io.h"
+#include "connect_sock.h"
 
 #define PORTNUM 50000
 struct sockaddr_in serv_addr;
 int sockfd[2];
+int listen_sockfd;
+FILE *istream[2];
+
+
+void make_sock_stream(){
+	istream[0] = fdopen(sockfd[0], "r+");
+	if(istream[0] == NULL){
+		perror("fdopen:\n");
+		exit(1);
+	}
+	istream[1] = fdopen(sockfd[1], "r+");
+	if(istream[1] == NULL){
+		perror("fdopen:\n");
+		exit(1);
+	}
+}
 
 
 void be_server(){
-	int listen_sockfd;
 	int val;
 	int flag = 1;
 	int cli_count = 0;
@@ -65,7 +80,9 @@ void be_server(){
 		perror("accept:");
 		exit(1);
 	}
-
+	make_sock_stream();
+	printf("connected\n");
+	
 }
 
 void be_client(){
@@ -97,7 +114,7 @@ void be_client(){
 	//struct sockaddr_in *port;
 	memset(&serv_addr, 0, sizeof(struct sockaddr_in));
 	serv_addr.sin_family = AF_INET;
-	serv_addr.sin_addr.s_addr = inet_addr("172.28.34.65");//サーバ
+	serv_addr.sin_addr.s_addr = inet_addr("127.0.0.1");//サーバ
 	serv_addr.sin_port = htons(PORTNUM);
 	
 	//コネクション要求
@@ -111,6 +128,76 @@ void be_client(){
 	perror("connect:");
 		exit(1);
 	}
+	make_sock_stream();
+	printf("connected\n");
+}
+
+
+void send_txdata(char buff[1024]){
+	fprintf(istream[0], buff);
+	free(buff);
+}
+
+char *receive_txdata(){
+	char *buff = malloc(1024);
+	char *val;
+	val = fgets(buff, sizeof(buff), istream[1]);
+	if(val == NULL && ferror(istream[1]) != 0){
+		printf("receive_txdata:fgets:error\n");
+		exit(1);
+	}
+	return buff;
+
+}
+
+void send_OK_NO(int i){
+	
+	if(i = 0) fprintf(istream[1], "OK\n");
+	else if(i = 1) fprintf(istream[1], "NO\n");
+	else{
+		fprintf(istream[1], "ER\n");
+		printf("send_OK_NO:不明なレスポンスです\n");
+		exit(1);
+	}
+}
+
+int wait_OK(){
+	char buff[5];
+	char *val;
+	val = fgets(buff, sizeof(buff), istream[0]);
+	if(val == NULL && ferror(istream[0]) != 0){
+		printf("wait_OK:fgets:error\n");
+		exit(1);
+	}
+	
+	if(strcmp(buff, "OK\n") == 0){
+		return 0;
+	}else if(strcmp(buff, "NO\n") == 0){
+		return 1;
+	}else if(strcmp(buff, "ER\n") == 0){
+		printf("wait_OK:相手のプロセスがエラーです \n");
+		return -1;
+	}
+}
+
+void close_socket(int mode){
+	int val;
+	val = fclose(istream[0]);
+	if(val != 0){
+		perror("close(sockfd):");
+		exit(1);
+	}
+	
+	if(mode == 1){
+		val = close(listen_sockfd);
+		if(val == -1){
+			perror("close(listen_sockfd):");
+			exit(1);
+		}
+	}
+
+
+
 }
 
 /*

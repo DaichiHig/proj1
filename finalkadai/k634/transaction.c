@@ -1,8 +1,7 @@
+/* cy22226 日暮大地 transaction.c*/
 #include <stdio.h>
-#include <pthread.h>
-#include <errno.h>
+#include <unistd.h>
 #include <stdlib.h>
-#include <sys/time.h>
 
 //外部ファイルのヘッダをインクルード、プロトタイプされた関数のみ参照可----------------------------------------------------
 #include "connect_sock.h" //ソケットをつなげる関数を参照できる
@@ -10,9 +9,6 @@
 #include "tx-func.h" //振替操作をするスレッド関数を参照できる
 
 //
-#define TRANS_COUNT 10000
-#define ACCOUNT_NUM 1000
-#define TIMEOUT_TIME 1
 #define FIRST_MONEY 10000
 
 
@@ -22,20 +18,7 @@
 
 
 
-/*
-関数:sumAmountこの関数はmanege_dataに入れようかな。。。。
-全口座の総額を計算する関数
-引数: なし
-戻り値:sum 全口座の総額をint型で返す
-操作: グローバル変数の配列accountを用いて全口座の総額を計算して戻り値として返す。
-*/
-int sumAmount(){
-	int sum = 0;
-	for(int i=0; i < ACCOUNT_NUM; i++){
-		sum += account[i]; //口座の残高を足す
-	}
-	return sum;
-}
+
 
 
 /*
@@ -43,6 +26,7 @@ main
 */
 int main(int argc, char *argv[]){
 	int val;//エラー処理に使う変数
+	int mode;
 
 	//引数のエラー処理
 	if(argc == 1){
@@ -71,10 +55,12 @@ int main(int argc, char *argv[]){
 	
 	
 	//ソケットをつなげる---------------------------------------------------
-	if(argv[1] == 's'){
+	if(argv[1][0] == 's'){
+		mode = 1;
 		printf("サーバを立ち上げます\n");
 		be_server(); //サーバとしてソケットを接続する外部関数:connect_sock.cより
-	}else if(argv[1] == 'c'){
+	}else if(argv[1][0] == 'c'){
+		mode = 0;
 		printf("クライアントを立ち上げます\n");
 		be_client(); //クライアントとしてソケットを接続する外部関数:connect_sock.cより
 	}else{
@@ -85,7 +71,7 @@ int main(int argc, char *argv[]){
 	
 	//トランザクションデータの読み込み-------------------------------------
 	//ファイルの読み込みを行う外部関数:manege_data.cより
-	read_txdata(argv[1]);
+	read_txdata(argv[1][0]);
 	
 	/*
 	FILE *istream_f;
@@ -119,12 +105,12 @@ int main(int argc, char *argv[]){
 	}
 	*/
 	
-	//最初の合計金額の表示
+	//最初の合計金額の表示:manege_dataより
 	printf("最初の合計金額：%d円\n", sumAmount());	
 	
 	//スレッドの立ち上げ--------------------------------------------------------
 	//スレッドの初期化と生成を行う外部関数:tx-func.c
-	create_tx_thread();
+	do_tx_thread();
 	
 	/*
 	//スレッドの初期化
@@ -144,18 +130,16 @@ int main(int argc, char *argv[]){
 	}
 	*/
 	
-	//スレッドの終了--------------------------------------------------------------
+	//スレッドの終了--------------------------------------------------------------立ち上げと一緒の関数にした
 	//:tx-func.c
-	for (int i=0; i < 2; i++){
-		pthread_join(th[i], NULL);
-	}
 	
-	//最後の合計金額の表示
+	
+	//最後の合計金額の表示:manege_dataより
 	printf("最後の合計金額：%d円\n", sumAmount());
 	
 	//ソケットの切断--------------------------------------------------------------
 	//:connect_sock.c
-	
+	close_socket(mode);
 
 
 }
