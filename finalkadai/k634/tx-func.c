@@ -4,13 +4,14 @@
 #include <errno.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <sys/time.h>
 #include "connect_sock.h"
 #include "manege_data.h"
 #include "tx-func.h"
 
 #define TRANS_COUNT 10000
 #define ACCOUNT_NUM 1000
-#define TIMEOUT_TIME 1
+#define TIMEOUT_TIME 0.01
 #define THREAD_SETNUM 1
 
 //外部のグローバル変数の参照----------------------------------------------------------------------------------------------
@@ -85,19 +86,30 @@ void *receive(void *arg){
 	while(1){
 		
 		txdat = receive_txdata();//connect_sock.c
-		if(txdat[0] = 'E') break;//スレッドの終了
 		
+		
+		//printf("receive::printtxdat\n");
+		if(txdat[0] == 'E') break;//スレッドの終了
+		printf("receive::into_getmutex\n");
 		getmutex();
+		printf("receive::comp, getmutex\nreceive::into_timerset\n");
 		timer_set(thn, TIMEOUT_TIME);
+		printf("receive::into_check\n");
 		val = start_check_receive(txdat, thn);
-		
+		printf("receive::comp_check\n");
+		free(txdat);
+		printf("receive::free,txdat\n");
 		if(val == ETIMEDOUT){
+			printf("receive::sen_NO\n");
 			send_OK_NO(1);
 		
 		}else{
+			printf("receive::sen_OK\n");
 			send_OK_NO(0);
 		}
+		printf("receive::unlock_mutex\n");
 		give_back_mutex();
+		inform_back_mutex();
 	}
 }
 
@@ -114,6 +126,7 @@ void *main_tx(void *arg){
 	int nowtask;
 	int endi = taskuni - 1;
 	int endtask = tasknum * taskuni + endi;
+	char *buff;
 	//タイムアウトしたときに保存用として用いる変数manege_data.cへ移動
 	/*
 	int timeout_from;
@@ -123,8 +136,11 @@ void *main_tx(void *arg){
 	
 	for (int i=0; i < taskuni; i++){ //iは自分が担当している振替操作の中で、何番目かを表している。
 		nowtask = tasknum * taskuni + i;
+		printf("nowtask:%d\n", nowtask);
 		int val;
+		printf("main::into_getmutex\n");
 		getmutex();
+		printf("main::comp, getmutex\n");
 		/*
 		pthread_mutex_lock(&mutex); //mutexのロック	これはそれぞれのmanege_data関数に入れたほうがよいかな
 		*/
@@ -147,7 +163,8 @@ void *main_tx(void *arg){
 		*/
 		
 		//タイマーの時限の設定をする関数manege_data.c
-		timer_set(thn, TIMEOUT_TIME);
+		printf("main::into settimer\n");
+		timer_set(thn, 1);
 		/*
 		gettimeofday(&now, NULL); //現在の時刻を取得する。
 		timeout.tv_sec = now.tv_sec + TIMEOUT_TIME; //現在の時刻のTIMEOUT_TIME秒後を時限とする。
@@ -158,6 +175,7 @@ void *main_tx(void *arg){
 		//次のwhile文では、振替元の残高が足りなかった場合は、timedwaitでmutexを解除して条件変数cvarにシグナルが送られるまで待機する。
 		//シグナルが送られてくるとtimedwaitがmutexを再獲得してwhile文の判定に戻る。
 		//シグナルが送られたとき時限に達していた場合はtimedwaitからETIMEDOUTが返されて、次の判定でwhile文を出る。このときtimedwaitはmutexを再獲得する。
+		printf("main::into start_check\n");
 		val = start_check_tx(nowtask, thn);
 		/*
 		while(account[from[thn * TRANS_COUNT/10 + i]] < amount[thn * TRANS_COUNT/10 + i] && retcode != ETIMEDOUT){
@@ -168,21 +186,30 @@ void *main_tx(void *arg){
 		
 		//前のwhileを抜け出した要因がタイムアウトではなかった場合は、自分の担当のi番目の操作を行う。
 		if(val != ETIMEDOUT){
-			
+			printf("main::go_tx!!\n");
 			if(check_tx_type(nowtask) == 'o'){
 				//txデータをまるごと送る
 				//贈りたいデータの取得
-				send_txdata(make_send_data(nowtask));//相手にデータを送って相手側の承認を待つ
+				buff = make_send_data(nowtask);
+				printf("main::comp,moke_send:\n");
+				send_txdata(buff);//相手にデータを送って相手側の承認を待つ
+				printf("main::comp,send\n");
+				free(buff);
+				printf("main::free,buff\n");
 				val = wait_OK();
+				printf("%d\n", val);
 				if(val != 0){//送金が取り消された場合
 					postpone_tx(nowtask, endtask);
 					i -- ;
+					printf("main::unlock!!\n");
 					give_back_mutex();
+					printf("main::送金を取り消しました\n");
 					continue;
 				}
 			}
+			printf("main::into_do_tx\n");
 			do_tx(nowtask);//
-			
+			printf("main::comp_do_tx\n");
 			/*
 			//printf("%d:%d:%d:%d\n", thn, from[thn * TRANS_COUNT/10 + i],to[thn * TRANS_COUNT/10 + i],amount[thn * TRANS_COUNT/10 + i]);
 			busy(amount[thn * TRANS_COUNT/THREAD_NUM + i]);
@@ -195,6 +222,7 @@ void *main_tx(void *arg){
 			//printf("do\n");//テスト用
 			*/
 		}else{//タイムアウトのときは操作の順番を一つ繰り上げて、タイムアウトした振替は担当の一番最後にまわす。manege_data.c
+			printf("main::timeout!!\n");
 			postpone_tx(nowtask, endtask);
 			/*
 			//テスト用の表示
@@ -222,7 +250,10 @@ void *main_tx(void *arg){
 		}
 		
 		//mutexの解除
+		printf("main::unlock_mutex\n");
 		give_back_mutex();
+		inform_back_mutex();
+		sleep(0.01);
 		/*
 		pthread_mutex_unlock(&mutex);
 		*/
@@ -247,7 +278,7 @@ void do_tx_thread(){
 		perror("pthrad_create:");
 		exit(1);
 	}	
-	val = pthread_create(&th[1], NULL, receive, (void *)0);
+	val = pthread_create(&th[1], NULL, receive, (void *)1);
 	if(val != 0){
 		perror("pthrad_create:");
 		exit(1);

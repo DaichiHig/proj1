@@ -9,7 +9,7 @@
 #include "tx-func.h" //振替操作をするスレッド関数を参照できる
 
 //
-#define FIRST_MONEY 10000
+#define FIRST_MONEY 100000
 
 
 

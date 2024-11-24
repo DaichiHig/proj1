@@ -17,13 +17,24 @@ FILE *istream[2];
 
 void make_sock_stream(){
 	istream[0] = fdopen(sockfd[0], "r+");
+	int val;
 	if(istream[0] == NULL){
 		perror("fdopen:\n");
+		exit(1);
+	}
+	val = setvbuf(istream[0], NULL, _IONBF, 0);
+	if(val != 0){
+		perror("setvbuf1:");
 		exit(1);
 	}
 	istream[1] = fdopen(sockfd[1], "r+");
 	if(istream[1] == NULL){
 		perror("fdopen:\n");
+		exit(1);
+	}
+	val = setvbuf(istream[1], NULL, _IONBF, 0);
+	if(val != 0){
+		perror("setvbuf2:");
 		exit(1);
 	}
 }
@@ -133,31 +144,52 @@ void be_client(){
 }
 
 
-void send_txdata(char buff[1024]){
+void send_txdata(char *buff){
+	printf("main::in send_txdata:\n");
+	printf("main::send_txdata:%s\n", buff);
 	fprintf(istream[0], buff);
-	free(buff);
 }
 
 char *receive_txdata(){
-	char *buff = malloc(1024);
-	char *val;
-	val = fgets(buff, sizeof(buff), istream[1]);
-	if(val == NULL && ferror(istream[1]) != 0){
-		printf("receive_txdata:fgets:error\n");
+	printf("receive::in_receive_txdata:\n");
+	char buff[50];
+	char *complete_input = malloc(50);
+	if(buff == NULL){
+		perror("receive:malloc:");
 		exit(1);
 	}
-	return buff;
+	char *val;
+	/*
+	val = fgets(buff, sizeof(buff), istream[1]);
+	if(val == NULL && ferror(istream[1]) != 0){
+		printf("receive::receive_txdata:fgets:error\n");
+		exit(1);
+	}
+	*/
+	
+	while (fgets(buff, sizeof(buff), istream[1])) {
+        	strcat(complete_input, buff);
+       		// 改行文字が見つかれば終了
+        	if (strchr(buff, '\n') != NULL) break;
+    	}
+	
+	printf("receive::receive:%s\n", buff);
+	return complete_input;
 
 }
 
 void send_OK_NO(int i){
 	
-	if(i = 0) fprintf(istream[1], "OK\n");
-	else if(i = 1) fprintf(istream[1], "NO\n");
+	if(i = 0) fprintf(istream[1], "ok\n");
+	else if(i = 1) fprintf(istream[1], "no\n");
 	else{
-		fprintf(istream[1], "ER\n");
-		printf("send_OK_NO:不明なレスポンスです\n");
+		fprintf(istream[1], "er\n");
+		printf("receive::send_OK_NO:不明なレスポンスです\n");
 		exit(1);
+	}
+	if(ferror(istream[1]) != 0){
+		printf("receive::miss send\n");
+	
 	}
 }
 
@@ -166,21 +198,22 @@ int wait_OK(){
 	char *val;
 	val = fgets(buff, sizeof(buff), istream[0]);
 	if(val == NULL && ferror(istream[0]) != 0){
-		printf("wait_OK:fgets:error\n");
+		perror("main::wait_OK:fgets:error\n");
 		exit(1);
 	}
-	
-	if(strcmp(buff, "OK\n") == 0){
+	printf("main::back %s\n", buff);
+	if(strcmp(buff, "ok\n") == 0){
 		return 0;
-	}else if(strcmp(buff, "NO\n") == 0){
+	}else if(strcmp(buff, "no\n") == 0){
 		return 1;
-	}else if(strcmp(buff, "ER\n") == 0){
-		printf("wait_OK:相手のプロセスがエラーです \n");
+	}else if(strcmp(buff, "er\n") == 0){
+		printf("main::wait_OK:相手のプロセスがエラーです \n");
 		return -1;
 	}
 }
 
 void close_socket(int mode){
+	printf("通信を切ります\n");
 	int val;
 	val = fclose(istream[0]);
 	if(val != 0){

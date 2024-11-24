@@ -41,18 +41,29 @@ void busy(int money){
 }
 
 void set_sync(){
+	
 	pthread_mutex_init(&mutex, NULL);
+	
 	pthread_cond_init(&cvar, NULL);
 }
 
 void getmutex(){
-	pthread_mutex_lock(&mutex); //mutexのロック
+	int val;
+	printf("in_getmutex\n");
+	val = pthread_mutex_lock(&mutex); //mutexのロック
+	if(val != 0){
+		printf("%d", val);
+	}
+	
 }
 
 void give_back_mutex(){
 	pthread_mutex_unlock(&mutex);
 }
 
+void inform_back_mutex(){
+	pthread_cond_signal(&cvar);
+}
 
 
 void timer_set(int thn, int tout){
@@ -85,14 +96,16 @@ int start_check_receive(char buff[1024], int thn){
 	char mo;
 	int frm, t, am;
 	
-	sscanf(buff, "%s--%d--%d--%d\n", mo, frm, t, am);
+	sscanf(buff, "%c,%d,%d,%d\n", mo, frm, t, am);
 	while(account[t] + am > 0 && retcode[thn] != ETIMEDOUT){
 		//printf("wait\n");//テスト用
 		retcode[thn] = pthread_cond_timedwait(&cvar, &mutex, &timeout[thn]);
 	}
 	if(retcode[thn] == ETIMEDOUT){
+		printf("receive::timeout!!\n");
 		return retcode[thn];
 	}else{
+		printf("receive::go!!");
 		do_receive(t, am);
 		return 0;
 	}
@@ -104,44 +117,60 @@ void do_receive(int t, int am){
 		printf("do_receive:error\n");
 		exit(1);
 	}
-	pthread_cond_signal(&cvar);
+	
+	printf("comp,receive!\n");
 }
 
 void do_tx(int i){
 	//printf("%d:%d:%d:%d\n", thn, from[thn * TRANS_COUNT/10 + i],to[thn * TRANS_COUNT/10 + i],amount[thn * TRANS_COUNT/10 + i]);
+	
 	if(!(tx[i] == 'o' || tx[i] == 't')){
+		printf("%s, %d, %d, %d,\n", tx[i], from[i], to[i], amount[i]);
 		printf("do_tx:不明な振替操作です\n");
 		exit(1);
 	}
 	
 	busy(amount[i]);
 	account[from[i]] -= amount[i];
+	printf("main::tx_did\n");
 	if(tx[i] == 't'){//相手銀行への送金の場合は振替先の操作は無い
 		account[to[i]] += amount[i];
 	}
-	pthread_cond_signal(&cvar); //条件変数にシグナルを送る。
+	
 	//mainのテスト用の変数に添字を足す
 	//did_trans += thn * TRANS_COUNT/10 + i;
 	//printf("do\n");//テスト用
-
+	printf("main::comp%c, %d, %d, %d,\n", tx[i], from[i], to[i], amount[i]);
 }
 
 
 
 char *make_send_data(int i){
-	char *buff = malloc(1024);
+	//printf("make_send:\n");
+	char *buff = malloc(40);
+	if(buff == NULL){
+		perror("make_send:malloc:");
+		exit(1);
+	}
 	char data[6];
-	strcpy(buff , &tx[i]);
-	strcat(buff, "--");
+	printf("t\n");
+	//charcat(buff , tx[i]);
+	*buff = tx[i];
+	buff[1] = '\0';
+	strcat(buff, ",");
+	printf("f\n");
 	sprintf(data, "%d", from[i]);
 	strcat(buff, data);
-	strcat(buff, "--");
+	strcat(buff, ",");
+	printf("to\n");
 	sprintf(data, "%d", to[i]);
 	strcat(buff, data);
-	strcat(buff, "--");
-	sprintf(data, "%d", amount[i]);
+	strcat(buff, ",");
+	printf("am\n");
+	sprintf(data, "%d\n", amount[i]);
 	strcat(buff, data);
-	strcat(buff, "\n");
+	//strcat(buff, "\n");
+	printf("comp\n");
 	return buff;
 }
 
@@ -204,6 +233,8 @@ void read_txdata(char mode){
 	FILE *istream_f;
 	char filename[10];
 	int val;
+	char *val_gets;
+	char buff[1024];
 	//モード設定
 	if(mode == 's'){
 		strcpy(filename, "trans_s");
@@ -220,7 +251,19 @@ void read_txdata(char mode){
 	
 	int tx_count=0;
 	while(1){
-		val = fscanf(istream_f, "%c,%d,%d,%d\n", &tx[tx_count], &from[tx_count], &to[tx_count], &amount[tx_count]);
+		val_gets = fgets(buff, sizeof(buff), istream_f);
+		if(val_gets == NULL ){
+			if(ferror(istream_f) == 0){
+				printf("fgets:complite%d\n", tx_count);
+				break;
+			}else{
+				printf("fgets:error\n");
+				exit(1);
+			}
+		}
+		val = sscanf(buff, "%c,%d,%d,%d\n", &tx[tx_count], &from[tx_count], &to[tx_count], &amount[tx_count]);
+		//val = fscanf(istream_f, "%c,%d,%d,%d\n", &tx[tx_count], &from[tx_count], &to[tx_count], &amount[tx_count]);
+		/*
 		if(val == EOF){
 			if(ferror(istream_f) == 0){
 				printf("fscanf:complite%d\n", tx_count);
@@ -231,14 +274,15 @@ void read_txdata(char mode){
 				exit(1);
 			}
 		}else if(val != 4){
-			/*
+			
 			printf("%d", val);
 			printf("読み込むデータの個数に間違いがあります\n");
-			//exit(1);
-			*/
+			exit(1);
+			
 			printf("fscanf:complite%d\n", tx_count);
 			break;
 		}
+		*/
 		tx_count++;
 	}
 	val = fclose(istream_f);

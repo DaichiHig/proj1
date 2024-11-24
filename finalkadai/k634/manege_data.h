@@ -3,6 +3,7 @@
 void set_sync();
 void getmutex();
 void give_back_mutex();
+void inform_back_mutex();
 void timer_set(int thn, int tout);
 char check_tx_type(int i);
 int start_check_tx(int i, int thn);
