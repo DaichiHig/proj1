@@ -1,0 +1,7 @@
+#!/bin/bash
+cc -o txgen txgen.c
+./txgen > trans_s.csv
+
+cc -pthread -o transaction transaction.c tx-func.c connect_sock.c manege_data.c
+./txgen > trans_c.csv
+

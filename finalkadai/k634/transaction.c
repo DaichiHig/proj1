@@ -1,4 +1,5 @@
 /* cy22226 日暮大地 transaction.c*/
+//main関数を含むファイル
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -10,16 +11,6 @@
 
 //
 #define FIRST_MONEY 100000
-
-
-
-
-
-
-
-
-
-
 
 /*
 main
@@ -37,22 +28,9 @@ int main(int argc, char *argv[]){
 	//初期設定-------------------------------------------------------------
 	//アカウントの残高の初期化を行う外部関数:read_data.cより
 	make_account_data(FIRST_MONEY);
-	/*
-	for(int i=0; i < ACCOUNT_NUM; i++) {
-		account[i] = FIRST_MONEY;
-	}
-	*/
-	
 	
 	//mutex,状態変数の初期化を行う外部関数:tx-func.cより
 	set_sync();
-	/*
-	pthread_mutex_init(&mutex, NULL);
-	pthread_cond_init(&cvar, NULL);
-	*/
-	
-	
-	
 	
 	//ソケットをつなげる---------------------------------------------------
 	if(argv[1][0] == 's'){
@@ -73,47 +51,12 @@ int main(int argc, char *argv[]){
 	//ファイルの読み込みを行う外部関数:manege_data.cより
 	read_txdata(argv[1][0]);
 	
-	/*
-	FILE *istream_f;
-	
-	if((istream_f = fopen("trans.csv", "r"))==NULL){ //課題用:trans.csv テスト用:random_data.csv
-		printf("ファイルを開くことができません");
-	}
-	
-	int tx_count=0;
-	while(1){
-		val = fscanf(istream_f, "%c,%d,%d,%d\n", &tx[tx_count], &from[tx_count], &to[tx_count], &amount[tx_count]);
-		if(val == EOF){
-			if(ferror(istream_f) == 0){
-				printf("fscanf:complite-%d\n", tx);
-				break;
-			}
-			else{
-				printf("fscanf:error\n");
-				exit(1);
-			}
-		}else if(val != 4){
-			printf("読み込むデータの個数に間違いがあります");
-			exit(1);
-		}
-		tx_count++;
-	}
-	val = fclose(istream_f);
-	if(val != 0){
-		perror("fclose:");
-		exit(1);
-	}
-	*/
-	
 	//最初の合計金額の表示:manege_dataより
 	printf("最初の合計金額：%d円\n", sumAmount());	
 	
 	//スレッドの立ち上げ--------------------------------------------------------
-	//スレッドの初期化と生成を行う外部関数:tx-func.c
+	//スレッドの初期化と生成を行って、スレッドの終了まで行う外部関数:tx-func.cより
 	do_tx_thread();
-	
-	
-	
 	
 	//最後の合計金額の表示:manege_dataより
 	printf("最後の合計金額：%d円\n", sumAmount());
@@ -121,7 +64,7 @@ int main(int argc, char *argv[]){
 	//ソケットの切断--------------------------------------------------------------
 	//:connect_sock.c
 	close_socket(mode);
-
+	printf("処理完了!!!\n");
 
 }
 

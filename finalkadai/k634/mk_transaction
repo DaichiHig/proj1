@@ -1,0 +1,5 @@
+#!/bin/bash
+
+
+cc -o txgen txgen.c
+cc -pthread -o transaction transaction.c tx-func.c connect_sock.c manege_data.c

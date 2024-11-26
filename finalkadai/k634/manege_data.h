@@ -4,7 +4,7 @@ void set_sync();
 void getmutex();
 void give_back_mutex();
 void inform_didtx();
-void timer_set(int thn, int tout);
+void timer_set(int thn, float tout);
 char check_tx_type(int i);
 int check_task(int i);
 int start_check_tx(int i, int thn);
@@ -19,4 +19,4 @@ void read_txdata(char mode);
 
 
 void postpone_tx(int nowtask, int endtask);
-int get_timedmutex(int tout);
+int get_timedmutex(int thn, int tout);

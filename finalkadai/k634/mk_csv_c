@@ -1,0 +1,4 @@
+#!/bin/bash
+
+cc -o txgen txgen.c
+./txgen > trans_c.csv

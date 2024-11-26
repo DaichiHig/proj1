@@ -1,3 +1,4 @@
+/* cy22226 日暮大地 connect_sock.c*/
 #include <arpa/inet.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -6,40 +7,51 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+//外部ファイルのヘッダをインクルード、プロトタイプされた関数のみ参照可----------------------------------------------------
 #include "connect_sock.h"
 
 #define PORTNUM 50000
+#define THREAD_SETNUM 1
+
+//グローバル変数----------------------------------------------------------------------------------------------
 struct sockaddr_in serv_addr;
-int sockfd[2];
+int sockfd[THREAD_SETNUM*2];
 int listen_sockfd;
-FILE *istream[2];
+FILE *istream[THREAD_SETNUM*2];
 
-
+/*
+ソケットをストリーム化する関数
+*/
 void make_sock_stream(){
-	istream[0] = fdopen(sockfd[0], "r+");
-	int val;
-	if(istream[0] == NULL){
-		perror("fdopen:\n");
-		exit(1);
-	}
-	val = setvbuf(istream[0], NULL, _IONBF, 0);
-	if(val != 0){
-		perror("setvbuf1:");
-		exit(1);
-	}
-	istream[1] = fdopen(sockfd[1], "r+");
-	if(istream[1] == NULL){
-		perror("fdopen:\n");
-		exit(1);
-	}
-	val = setvbuf(istream[1], NULL, _IONBF, 0);
-	if(val != 0){
-		perror("setvbuf2:");
-		exit(1);
+	for(int i = 0; i < THREAD_SETNUM; i++){
+		istream[i*2] = fdopen(sockfd[i*2], "r+");
+		int val;
+		if(istream[i*2] == NULL){
+			perror("fdopen:\n");
+			exit(1);
+		}
+		val = setvbuf(istream[i*2], NULL, _IONBF, 0);
+		if(val != 0){
+			perror("setvbuf1:");
+			exit(1);
+		}
+		istream[i*2+1] = fdopen(sockfd[i*2+1], "r+");
+		if(istream[i*2+1] == NULL){
+			perror("fdopen:\n");
+			exit(1);
+		}
+		val = setvbuf(istream[i*2+1], NULL, _IONBF, 0);
+		if(val != 0){
+			perror("setvbuf2:");
+			exit(1);
+		}
 	}
 }
 
 
+/*
+サーバとしてソケット接続する関数
+*/
 void be_server(){
 	int val;
 	int flag = 1;
@@ -80,34 +92,32 @@ void be_server(){
 		exit(1);
 	}
 	
-	//main側を立ち上げる
-	sockfd[0] = accept(listen_sockfd, NULL, NULL);
-	if(sockfd[0] == -1){
-		perror("accept:");
-		exit(1);
-	}
-	sockfd[1] = accept(listen_sockfd, NULL, NULL);
-	if(sockfd[1] == -1){
-		perror("accept:");
-		exit(1);
+	for(int k = 0; k < THREAD_SETNUM; k++){
+		//main側を立ち上げる
+		sockfd[k*2] = accept(listen_sockfd, NULL, NULL);
+		if(sockfd[k*2] == -1){
+			perror("accept:");
+			exit(1);
+		}
+		//
+		sockfd[k*2+1] = accept(listen_sockfd, NULL, NULL);
+		if(sockfd[k*2+1] == -1){
+			perror("accept:");
+			exit(1);
+		}
+		printf("connected\n");
+		
 	}
 	make_sock_stream();
-	printf("connected\n");
 	
 }
 
+/*
+クライアントとして、ソケットを接続する関数
+*/
 void be_client(){
 	int val;
 	int sock_count = 0;
-	/*
-	if(thread_mode == 'm'){
-		mode = 0;
-	}else if(thread_mode == 'r'){
-		mode = 1;
-	}else{
-		printf("be_client():不明な引数\n");
-		exit(1);
-	}*/
 	
 	//ソケットの作成
 	sockfd[0] = socket(AF_INET, SOCK_STREAM, 0);
@@ -128,30 +138,40 @@ void be_client(){
 	serv_addr.sin_addr.s_addr = inet_addr("127.0.0.1");//サーバ
 	serv_addr.sin_port = htons(PORTNUM);
 	
-	//コネクション要求
-	val = connect(sockfd[1], (struct sockaddr *)&serv_addr, sizeof(struct sockaddr_in));
-	if(val == -1){
-	perror("connect:");
-		exit(1);
-	}
-	val = connect(sockfd[0], (struct sockaddr *)&serv_addr, sizeof(struct sockaddr_in));
-	if(val == -1){
-	perror("connect:");
-		exit(1);
+	
+	for(int i = 0; i < THREAD_SETNUM; i++){
+		//コネクション要求
+		val = connect(sockfd[i*2+1], (struct sockaddr *)&serv_addr, sizeof(struct sockaddr_in));//receive側
+		if(val == -1){
+		perror("connect:");
+			exit(1);
+		}
+		val = connect(sockfd[i*2], (struct sockaddr *)&serv_addr, sizeof(struct sockaddr_in));//main側
+		if(val == -1){
+		perror("connect:");
+			exit(1);
+		}
+		printf("connected\n");
 	}
 	make_sock_stream();
-	printf("connected\n");
+
 }
 
 
+/*
+他社へ振り込みのtxのデータを送る関数
+*/
 void send_txdata(char *buff){
-	printf("main::in send_txdata:\n");
+	//printf("main::in send_txdata:\n");
 	printf("main::send_txdata:%s\n", buff);
 	fprintf(istream[0], buff);
 }
 
+/*
+他社から振り込みのtxのデータを受け取る関数
+*/
 char *receive_txdata(){
-	printf("receive::in_receive_txdata:\n");
+	//printf("receive::in_receive_txdata:\n");
 	char buff[50];
 	char *complete_input = malloc(50);
 	if(buff == NULL){
@@ -159,13 +179,6 @@ char *receive_txdata(){
 		exit(1);
 	}
 	char *val;
-	/*
-	val = fgets(buff, sizeof(buff), istream[1]);
-	if(val == NULL && ferror(istream[1]) != 0){
-		printf("receive::receive_txdata:fgets:error\n");
-		exit(1);
-	}
-	*/
 	
 	while (fgets(buff, sizeof(buff), istream[1])) {
         	strcat(complete_input, buff);
@@ -178,16 +191,19 @@ char *receive_txdata(){
 
 }
 
+/*
+他社からの振り込みに対するレスポンスをする関数。処理ができたときはOK,残高不足によるタイムアウトの場合は
+*/
 void send_OK_NO(int i){
 	
 	if(i == 0) {
-		fprintf(istream[1], "ok\n");
+		fprintf(istream[1], "rok\n");
 	}else if(i == 1) {
-		fprintf(istream[1], "no\n");
+		fprintf(istream[1], "rno\n");
 	}else if(i == -1) {
-		fprintf(istream[1], "tm\n");
+		fprintf(istream[1], "rtm\n");
 	}else{
-		fprintf(istream[1], "er\n");
+		fprintf(istream[1], "rer\n");
 		printf("receive::send_OK_NO:不明なレスポンスです\n");
 		exit(1);
 	}
@@ -195,11 +211,14 @@ void send_OK_NO(int i){
 		printf("receive::miss send\n");
 	
 	}
-	printf("receive::comp, send!!\n");
+	//printf("receive::comp, send!!\n");
 }
 
+/*
+他社への振り込みデータに対するレスポンスを待つ関数
+*/
 int wait_OK(){
-	printf("main::wait_respons\n");
+	//printf("main::wait_respons\n");
 	char buff[6];
 	char *val;
 	while(1){
@@ -208,9 +227,11 @@ int wait_OK(){
 			perror("main::wait_OK:fgets:error\n");
 			exit(1);
 		}
+		printf("main::back %s\n", buff);
 		if(buff[0] == 'r') break;
+		sleep(0.01);
 	}
-	printf("main::back %s\n", buff);
+	
 	if(strcmp(buff, "rok\n") == 0){//相手に振り込める場合
 		return 0;
 	}else if(strcmp(buff, "rno\n") == 0){//相手の残高が足りずタイムアウトした場合
@@ -223,6 +244,9 @@ int wait_OK(){
 	}
 }
 
+/*
+ソケット通信を切断する関数
+*/
 void close_socket(int mode){
 	printf("通信を切ります\n");
 	int val;
@@ -244,209 +268,4 @@ void close_socket(int mode){
 
 }
 
-/*
-自身のsockfd[0]をmain_txに、sockfd[1]をreceiveに割り振って、それと対応する相手の役割を決定し送信する
-*//*
-int decide_sock_role(){
-	char buff1[3], buff2[3];
-	int val;
-	
-	istream[0] = fdopen(sockfd[0], "r+");
-	if(istream[0] == NULL){
-		perror("fdopen1:");
-		exit(1);
-	} 
-	val = setvbuf(istream[0], NULL, _IONBF, 0);
-	if(val != 0){
-		perror("setvbuf1:");
-		exit(1);
-	}
-	istream[1] = fdopen(sockfd[1], "r+");
-	if(istream[1] == NULL){
-		perror("fdopen2:");
-		exit(1);
-	}
-	val = setvbuf(istream[1], NULL, _IONBF, 0);
-	if(val != 0){
-		perror("setvbuf2:");
-		exit(1);
-	}
-	
-	fprintf(istream[0],"receive\n");
-	fprintf(istream[1],"main\n");
-	val = fgets(buff1, sizeof(buff1[3]), istream[0]);
-	if(val == 0){
-		printf("fgets::");
-		exit(1);
-	}
-	fgets(buff2, sizeof(buff2[3]), istream[1]);
-	if(val == 0){
-		printf("fgets::");
-		exit(1);
-	}
-	
-	if(strcmp(buff1, "OK")==0 && strcmp(buff2, "OK")==0){
-		return 0;
-	}else{
-		printf("decide_sock_role():接続失敗\n");
-	}
-}*/
-
-/*
-int receive_sock_role(){
-	FILE *istr[2];
-	int val;
-	char buff1[3], buff2[3];
-	
-	istr[0] = fdopen(sockfd[0], "r+");
-	if(istr[0] == NULL){
-		perror("fdopen3:");
-		exit(1);
-	} 
-	val = setvbuf(istr[0], NULL, _IONBF, 0);
-	if(val != 0){
-		perror("setvbuf3:");
-		exit(1);
-	}
-	istr[1] = fdopen(sockfd[1], "r+");
-	if(istr[1] == NULL){
-		perror("fdopen4:");
-		exit(1);
-	}
-	val = setvbuf(istr[1], NULL, _IONBF, 0);
-	if(val != 0){
-		perror("setvbuf4:");
-		exit(1);
-	}
-	
-	val = fgets(buff1, sizeof(buff1[3]), istr[0]);
-	if(val == 0){
-		printf("fgets::");
-		exit(1);
-	}
-	fgets(buff2, sizeof(buff2[3]), istr[1]);
-	if(val == 0){
-		printf("fgets::");
-		exit(1);
-	}
-
-	if(strcmp("receive\n", buff1)==0 && strcmp("main\n", buff2)==0){
-		
-		istream[1] = fdopen(sockfd[0], "r+");
-		istream[0] = fdopen(sockfd[1], "r+");
-		
-	}else if(strcmp("main\n", buff1)==0 && strcmp("receive\n", buff2)==0){
-		istream[0] = fdopen(sockfd[0], "r+");
-		istream[1] = fdopen(sockfd[1], "r+");
-	}
-	else{
-		printf("receive_sock_role():接続失敗");
-		fprintf("");
-		exit
-	}
-}
-*/
-/*
-int receive_sock_role(){
-
-
-
-
-}*/
-
-/*
-int main(){
-	int sockfd, new_sockfd;
-	int val;
-	
-	char buff[128];
-	char dat[2]; //受取データ抽出用
-	char buff_re[128];
-	int dat_int;
-	int flag = 1;
-	
-	//ソケットの作成
-	sockfd = socket(AF_INET, SOCK_STREAM, 0);
-	if (sockfd == -1){
-		perror("socket:");
-		exit(1);
-	}
-	
-	//アドレスの作成
-	//struct sockaddr_in *port;
-	memset(&serv_addr, 0, sizeof(struct sockaddr_in));
-	serv_addr.sin_family = AF_INET;
-	serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-	serv_addr.sin_port = htons(PORTNUM);
-	
-	//ソケットのオプション
-	val = setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof(int));
-	if (val == -1){
-		perror("setsokopt:");
-		exit(1);
-	}
-	
-	
-	//ソケットにアドレスを割り当てる
-	val = bind(sockfd, (struct sockaddr *)&serv_addr, sizeof(struct sockaddr_in));
-	if(val == -1){
-		perror("bind:");
-		exit(1);
-	}
-	
-	//コネクションを待ち始める
-	val = listen(sockfd, 5);
-	if(val == -1){
-		perror("listen:");
-		exit(1);
-	}
-	
-	//要求の受付
-	new_sockfd = accept(sockfd, NULL, NULL);
-	if(new_sockfd == -1){
-		perror("acceot:");
-		exit(1);
-	}
-	
-	//クライアントからデータ
-	val = read(new_sockfd, buff, 128);
-	if(val == -1){
-		perror("read:");
-		exit(1);
-	}
-	
-	dat[0] = buff[0];
-	dat_int = (int)dat[0];
-	
-	val = write(1, dat, sizeof(dat));
-	if(val == -1){
-		perror("write:");
-		exit(1);
-	}
-	
-	//データを送り返す
-	dat_int ++;
-	buff_re[0] = (char)dat_int;
-	//データの送信
-	write(new_sockfd, buff_re, 128);
-	if(val == -1){
-		perror("write2:");
-		exit(1);
-	}
-	
-	sleep(1);
-	val = close(new_sockfd);
-	if(val == -1){
-		perror("close(new_sockfd):");
-		exit(1);
-	}
-	val = close(sockfd);
-	if(val == -1){
-		perror("close(sockfd):");
-		exit(1);
-	}
-	
-	
-	
-}*/
 
