@@ -10,6 +10,7 @@
 
 #define TRANS_COUNT 10000
 #define ACCOUNT_NUM 1000
+#define THREAD_SETNUM 1
 
 
 //グローバル変数----------------------------------------------------------------------------------------------
@@ -17,7 +18,9 @@
 char tx[TRANS_COUNT]; //振替のモードを表す文字t(自社内の振替),o(他社との振替)を格納する。
 int from[TRANS_COUNT], to[TRANS_COUNT]; //添字の振替操作の振り込み主、振り込み先アカウントの番号
 int amount[TRANS_COUNT]; //添字の振替操作の振替金額
+int task[TRANS_COUNT]; //未処理のtxには1、処理し終えたtxには0を格納するフラグ
 int account[ACCOUNT_NUM];
+
 
 
 //同期関連
@@ -25,9 +28,9 @@ pthread_mutex_t mutex; //mutexのアドレスの初期化
 pthread_cond_t cvar; //条件変数のアドレスの初期化
 
 ///タイマー関連
-struct timeval now[2]; //今の時間を取得する変数の宣言
-struct timespec timeout[2]; //timedwaitの時限を設定する変数
-int retcode[2]; //timedwaitの返り値を格納する変数。時限に達したかどうかがわかる
+struct timeval now[THREAD_SETNUM*2 + 1]; //今の時間を取得する変数の宣言
+struct timespec timeout[THREAD_SETNUM*2 + 1]; //timedwaitの時限を設定する変数
+int retcode[THREAD_SETNUM*2 + 1]; //timedwaitの返り値を格納する変数。時限に達したかどうかがわかる
 
 /*
 関数:busy
@@ -57,11 +60,30 @@ void getmutex(){
 	
 }
 
+int get_timedmutex(int tout){
+	int val;
+	double timer;
+	double nowtime;
+	printf("in_get_timedmutex\n");
+	timer_set(1, tout);//timeoutに時限を設定する
+	timer = timeout[1].tv_sec + timeout[1].tv_nsec/1000000; //時限の計算を行う
+	while (val != 0){
+		gettimeofday(&now[1], NULL); //現在時刻を計算する
+		nowtime = now[1].tv_sec + now[1].tv_usec/1000000000;
+		if(nowtime > timer){//タイムアウトのとき
+			return 1;
+		}
+		val = pthread_mutex_trylock(&mutex);
+		sleep(0.01);
+	}//mutexを獲得したとき
+	return 0;
+}
+
 void give_back_mutex(){
 	pthread_mutex_unlock(&mutex);
 }
 
-void inform_back_mutex(){
+void inform_didtx(){
 	pthread_cond_signal(&cvar);
 }
 
@@ -79,6 +101,10 @@ char check_tx_type(int i){
 	return tx[i];
 }
 
+int check_task(int i){
+	return task[i];
+}
+
 
 
 //次のwhile文では、振替元の残高が足りなかった場合は、timedwaitでmutexを解除して条件変数cvarにシグナルが送られるまで待機する。
@@ -92,23 +118,28 @@ int start_check_tx(int i, int thn){
 	return retcode[thn];
 }
 
-int start_check_receive(char buff[1024], int thn){
+int start_check_receive(char buff[50], int thn){
 	char mo;
 	int frm, t, am;
 	
-	sscanf(buff, "%c,%d,%d,%d\n", mo, frm, t, am);
-	while(account[t] + am > 0 && retcode[thn] != ETIMEDOUT){
+	sscanf(buff, "%c,%d,%d,%d\n", &mo, &frm, &t, &am);
+	printf("receive::check:%c,%d,%d,%d\n", mo, frm, t, am);
+	if(mo != 'o'){
+		printf("receive::受け付けない振替\n");
+		exit(1);
+	}
+	
+	while(account[t] + am < 0 && retcode[thn] != ETIMEDOUT){
 		//printf("wait\n");//テスト用
 		retcode[thn] = pthread_cond_timedwait(&cvar, &mutex, &timeout[thn]);
 	}
 	if(retcode[thn] == ETIMEDOUT){
 		printf("receive::timeout!!\n");
-		return retcode[thn];
 	}else{
 		printf("receive::go!!");
 		do_receive(t, am);
-		return 0;
 	}
+	return retcode[thn];
 }
 
 void do_receive(int t, int am){
@@ -136,7 +167,7 @@ void do_tx(int i){
 	if(tx[i] == 't'){//相手銀行への送金の場合は振替先の操作は無い
 		account[to[i]] += amount[i];
 	}
-	
+	task[i] = 0;
 	//mainのテスト用の変数に添字を足す
 	//did_trans += thn * TRANS_COUNT/10 + i;
 	//printf("do\n");//テスト用
@@ -158,19 +189,16 @@ char *make_send_data(int i){
 	*buff = tx[i];
 	buff[1] = '\0';
 	strcat(buff, ",");
-	printf("f\n");
 	sprintf(data, "%d", from[i]);
 	strcat(buff, data);
 	strcat(buff, ",");
-	printf("to\n");
 	sprintf(data, "%d", to[i]);
 	strcat(buff, data);
 	strcat(buff, ",");
-	printf("am\n");
 	sprintf(data, "%d\n", amount[i]);
 	strcat(buff, data);
 	//strcat(buff, "\n");
-	printf("comp\n");
+	printf("main::comp_make_send_data\n");
 	return buff;
 }
 
@@ -179,6 +207,7 @@ void postpone_tx(int nowtask, int endtask){
 	int postpone_from;
 	int postpone_to;
 	int postpone_amount;
+	int postpone_task;
 	//テスト用の表示
 	//printf("%dの振替をタイムアウトしました\n",  thn * TRANS_COUNT/10 + i);
 			
@@ -186,18 +215,21 @@ void postpone_tx(int nowtask, int endtask){
 	postpone_from = from[nowtask];
 	postpone_to = to[nowtask];
 	postpone_amount = amount[nowtask];
+	postpone_task = task[nowtask];
 			
 	// 次以降の振替操作から担当の一番最後までの振替を一つ繰り上げる。
 	for (int k=nowtask; k <= endtask; k++){
 		from[k] = from[k + 1];
 		to[k] = to[k + 1];
 		amount[k] = amount[k + 1];
+		task[k] = task[k + 1];
 	}
 			
 	//タイムアウトした振替を配列の担当の一番最後に格納する。
 	from[endtask] = postpone_from;
 	to[endtask] = postpone_to;
 	amount[endtask] = postpone_amount;
+	task[endtask] = postpone_task;
 }
 
 
@@ -262,6 +294,7 @@ void read_txdata(char mode){
 			}
 		}
 		val = sscanf(buff, "%c,%d,%d,%d\n", &tx[tx_count], &from[tx_count], &to[tx_count], &amount[tx_count]);
+		task[tx_count] = 1;
 		//val = fscanf(istream_f, "%c,%d,%d,%d\n", &tx[tx_count], &from[tx_count], &to[tx_count], &amount[tx_count]);
 		/*
 		if(val == EOF){

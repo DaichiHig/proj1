@@ -180,9 +180,13 @@ char *receive_txdata(){
 
 void send_OK_NO(int i){
 	
-	if(i = 0) fprintf(istream[1], "ok\n");
-	else if(i = 1) fprintf(istream[1], "no\n");
-	else{
+	if(i == 0) {
+		fprintf(istream[1], "ok\n");
+	}else if(i == 1) {
+		fprintf(istream[1], "no\n");
+	}else if(i == -1) {
+		fprintf(istream[1], "tm\n");
+	}else{
 		fprintf(istream[1], "er\n");
 		printf("receive::send_OK_NO:不明なレスポンスです\n");
 		exit(1);
@@ -191,24 +195,31 @@ void send_OK_NO(int i){
 		printf("receive::miss send\n");
 	
 	}
+	printf("receive::comp, send!!\n");
 }
 
 int wait_OK(){
-	char buff[5];
+	printf("main::wait_respons\n");
+	char buff[6];
 	char *val;
-	val = fgets(buff, sizeof(buff), istream[0]);
-	if(val == NULL && ferror(istream[0]) != 0){
-		perror("main::wait_OK:fgets:error\n");
-		exit(1);
+	while(1){
+		val = fgets(buff, sizeof(buff), istream[0]);
+		if(val == NULL && ferror(istream[0]) != 0){
+			perror("main::wait_OK:fgets:error\n");
+			exit(1);
+		}
+		if(buff[0] == 'r') break;
 	}
 	printf("main::back %s\n", buff);
-	if(strcmp(buff, "ok\n") == 0){
+	if(strcmp(buff, "rok\n") == 0){//相手に振り込める場合
 		return 0;
-	}else if(strcmp(buff, "no\n") == 0){
+	}else if(strcmp(buff, "rno\n") == 0){//相手の残高が足りずタイムアウトした場合
 		return 1;
-	}else if(strcmp(buff, "er\n") == 0){
-		printf("main::wait_OK:相手のプロセスがエラーです \n");
+	}else if(strcmp(buff, "rtm\n") == 0){//相手のmutexが取れずタイムアウトした場合
 		return -1;
+	}else if(strcmp(buff, "rer\n") == 0){
+		printf("main::wait_OK:相手のプロセスがエラーです \n");
+		exit(1);
 	}
 }
 

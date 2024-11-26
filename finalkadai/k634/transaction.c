@@ -112,26 +112,7 @@ int main(int argc, char *argv[]){
 	//スレッドの初期化と生成を行う外部関数:tx-func.c
 	do_tx_thread();
 	
-	/*
-	//スレッドの初期化
-	pthread_t th[2]; //マルチスレッドで行くなら[マルチする数][2]かな
 	
-	
-	//スレッドを生成
-	val = pthread_create(&th[0], NULL, main_tx, (void *)0);
-	if(val != 0){
-		perror("pthrad_create:");
-		exit(1);
-	}	
-	val = pthread_create(&th[1], NULL, receive, (void *)0);
-	if(val != 0){
-		perror("pthrad_create:");
-		exit(1);
-	}
-	*/
-	
-	//スレッドの終了--------------------------------------------------------------立ち上げと一緒の関数にした
-	//:tx-func.c
 	
 	
 	//最後の合計金額の表示:manege_dataより
